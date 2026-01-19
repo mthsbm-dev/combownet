@@ -113,6 +113,43 @@ body {
   color: white;
   cursor: pointer;
 }
+
+/* Visueller Badge */
+#badgeCounter {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: #FF6B6B;
+  color: white;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  z-index: 1000;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+
+/* Debug Info */
+#debugInfo {
+  position: fixed;
+  bottom: 80px;
+  right: 10px;
+  background: rgba(0,0,0,0.8);
+  color: #0f0;
+  padding: 8px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: monospace;
+  z-index: 999;
+  max-width: 250px;
+  max-height: 150px;
+  overflow: auto;
+  display: none;
+}
 </style>
 
 </head>
@@ -130,6 +167,12 @@ body {
 <!-- Push Button -->
 <button id="enablePush" onclick="enablePush()">🔔 Push aktivieren</button>
 
+<!-- Visueller Badge Counter -->
+<div id="badgeCounter">0</div>
+
+<!-- Debug Info (3x kurz klicken zum Anzeigen) -->
+<div id="debugInfo"></div>
+
 <!-- CHAT -->
 <div id="chat" style="display:none">
   <div id="messages"></div>
@@ -144,6 +187,30 @@ let USERNAME = localStorage.getItem("username");
 const loginDiv = document.getElementById("login");
 const chatDiv = document.getElementById("chat");
 const pushBtn = document.getElementById("enablePush");
+
+// Initialisiere visuellen Badge beim Start
+const savedCount = localStorage.getItem('unreadCount') || 0;
+updateVisualBadge(parseInt(savedCount));
+
+// Debug-Modus: 3x auf Badge klicken zum Anzeigen
+let badgeClickCount = 0;
+let badgeClickTimer;
+document.getElementById('badgeCounter').addEventListener('click', () => {
+  badgeClickCount++;
+  clearTimeout(badgeClickTimer);
+  badgeClickTimer = setTimeout(() => { badgeClickCount = 0; }, 1000);
+  
+  if (badgeClickCount === 3) {
+    badgeClickCount = 0;
+    const debugDiv = document.getElementById('debugInfo');
+    if (debugDiv.style.display === 'none' || !debugDiv.style.display) {
+      debugDiv.style.display = 'block';
+      debugDiv.innerHTML = debugLogs.join('<br>');
+    } else {
+      debugDiv.style.display = 'none';
+    }
+  }
+});
 
 // Login
 if (!USERNAME) { loginDiv.style.display = "block"; } 
@@ -193,6 +260,8 @@ function formatDateTime(iso) {
 // Badge in localStorage speichern
 function updateBadgeStorage(count) {
   localStorage.setItem('unreadCount', count);
+  updateVisualBadge(count);
+  
   // Für iOS: PWA Badge aktualisieren
   if ('setAppBadge' in navigator) {
     if (count > 0) {
@@ -210,12 +279,38 @@ function updateBadgeStorage(count) {
   }
 }
 
+// Visuellen Badge aktualisieren
+function updateVisualBadge(count) {
+  const badge = document.getElementById('badgeCounter');
+  if (badge) {
+    if (count > 0) {
+      badge.textContent = count > 99 ? '99+' : count;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+  debug(`Badge: ${count}`);
+}
+
+// Debug-Funktion
+let debugLogs = [];
+function debug(msg) {
+  const timestamp = new Date().toLocaleTimeString();
+  const logMsg = `[${timestamp}] ${msg}`;
+  debugLogs.push(logMsg);
+  if (debugLogs.length > 10) debugLogs.shift();
+  console.log(logMsg);
+}
+
 // Badge löschen, wenn App aktiv ist
 function clearBadgeIfActive() {
   if ('setAppBadge' in navigator) {
     navigator.clearAppBadge?.().catch(()=>{});
     localStorage.setItem('unreadCount', 0);
   }
+  updateVisualBadge(0);
+  
   // Benachrichtige Service Worker
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({ 
@@ -235,6 +330,7 @@ document.addEventListener('visibilitychange', function() {
 // Höre auf Nachrichten vom Service Worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', event => {
+    debug(`SW Message: ${event.data.type} (count: ${event.data.count})`);
     if (event.data.type === 'setUnreadCount') {
       updateBadgeStorage(event.data.count);
     }
@@ -266,9 +362,11 @@ async function load() {
   // Badge auf PWA setzen (iOS/Android) - nur wenn App nicht sichtbar ist
   if (document.hidden) {
     const unread = msgs.filter(m => m.user !== USERNAME).length;
+    debug(`Load (hidden): ${unread} unread`);
     updateBadgeStorage(unread);
   } else {
     // App ist sichtbar - Badge löschen
+    debug(`Load (visible): clearing badge`);
     clearBadgeIfActive();
   }
 }
