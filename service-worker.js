@@ -1,7 +1,55 @@
 /* service-worker.js */
 
-// Persistenter Zähler (wird beim SW-Start auf 0 gesetzt)
+// Persistenter Zähler
 let unreadCount = 0;
+
+// Helper: Badge persistent speichern
+function saveUnreadCount(count) {
+  try {
+    const db = indexedDB.open('combow-messenger');
+    db.onsuccess = () => {
+      const store = db.result.transaction(['badge'], 'readwrite').objectStore('badge');
+      store.put({ id: 'unread', count: count });
+    };
+  } catch (e) {
+    console.log('IndexedDB nicht verfügbar');
+  }
+}
+
+// Helper: Badge abrufen
+async function loadUnreadCount() {
+  return new Promise((resolve) => {
+    try {
+      const db = indexedDB.open('combow-messenger');
+      db.onsuccess = () => {
+        const store = db.result.transaction(['badge'], 'readonly').objectStore('badge');
+        const req = store.get('unread');
+        req.onsuccess = () => {
+          resolve(req.result ? req.result.count : 0);
+        };
+      };
+      db.onerror = () => resolve(0);
+    } catch (e) {
+      resolve(0);
+    }
+  });
+}
+
+// IndexedDB initialisieren
+self.addEventListener('install', event => {
+  event.waitUntil(
+    new Promise((resolve) => {
+      const db = indexedDB.open('combow-messenger');
+      db.onupgradeneeded = () => {
+        if (!db.result.objectStoreNames.contains('badge')) {
+          db.result.createObjectStore('badge');
+        }
+      };
+      db.onsuccess = () => resolve();
+    })
+  );
+  self.skipWaiting();
+});
 
 // Push empfangen
 self.addEventListener("push", event => {
@@ -11,24 +59,26 @@ self.addEventListener("push", event => {
     catch(err) { data = { body: event.data.text() }; }
   }
 
-  unreadCount++;
-
-  const options = {
-    body: data.body || "Neue Nachricht",
-    icon: "/favicon.png",
-    badge: "/favicon.png",
-    tag: "new-message",
-    data: { url: "/" }
-  };
-
   event.waitUntil(
     (async () => {
+      unreadCount = await loadUnreadCount();
+      unreadCount++;
+      saveUnreadCount(unreadCount);
+
+      const options = {
+        body: data.body || "Neue Nachricht",
+        icon: "/favicon.png",
+        badge: "/favicon.png",
+        tag: "new-message",
+        data: { url: "/", unreadCount: unreadCount }
+      };
+
       // Notification anzeigen
       await self.registration.showNotification(data.title || "Combow Messenger", options);
 
-      // Chrome/Android Badge setzen
-      if ('setAppBadge' in navigator) {
-        navigator.setAppBadge(unreadCount).catch(()=>{});
+      // Badge setzen (Chrome/Android/iOS)
+      if ('setAppBadge' in self) {
+        self.setAppBadge(unreadCount).catch(()=>{});
       }
     })()
   );
@@ -40,9 +90,12 @@ self.addEventListener("notificationclick", event => {
 
   event.waitUntil(
     (async () => {
-      // Zähler zurücksetzen
+      // Zähler zurücksetzen und speichern
       unreadCount = 0;
-      if ('clearAppBadge' in navigator) { navigator.clearAppBadge().catch(()=>{}); }
+      saveUnreadCount(0);
+      
+      if ('setAppBadge' in self) { self.setAppBadge(0).catch(()=>{}); }
+      if ('clearAppBadge' in self) { self.clearAppBadge().catch(()=>{}); }
 
       const clientList = await clients.matchAll({ type:"window", includeUncontrolled:true });
       if (clientList.length > 0) { clientList[0].focus(); } 
@@ -51,6 +104,5 @@ self.addEventListener("notificationclick", event => {
   );
 });
 
-// SW installieren und aktivieren
-self.addEventListener("install", event => { self.skipWaiting(); });
+// SW aktivieren
 self.addEventListener("activate", event => { event.waitUntil(self.clients.claim()); });

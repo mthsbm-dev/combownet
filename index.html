@@ -157,6 +157,16 @@ function login() {
   location.reload();
 }
 
+// Service Worker registrieren
+async function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('/service-worker.js');
+      console.log("Service Worker registriert");
+    } catch(err) { console.error(err); }
+  }
+}
+
 // Datum + Uhrzeit formatieren
 function formatDateTime(iso) {
   const date = new Date(iso);
@@ -180,6 +190,18 @@ function formatDateTime(iso) {
   return `${day} ${time}`;
 }
 
+// Badge in localStorage speichern
+function updateBadgeStorage(count) {
+  localStorage.setItem('unreadCount', count);
+  // Für iOS: PWA Badge aktualisieren
+  if ('setAppBadge' in navigator) {
+    if (count > 0) {
+      navigator.setAppBadge(count).catch(()=>{});
+    } else {
+      navigator.clearAppBadge?.().catch(()=>{});
+    }
+  }
+}
 
 // Nachrichten laden
 async function load() {
@@ -204,10 +226,8 @@ async function load() {
   box.scrollTop = box.scrollHeight;
 
   // Badge auf PWA setzen (iOS/Android)
-  if ('setAppBadge' in navigator) {
-    const unread = msgs.filter(m => m.user !== USERNAME).length;
-    navigator.setAppBadge(unread).catch(()=>{});
-  }
+  const unread = msgs.filter(m => m.user !== USERNAME).length;
+  updateBadgeStorage(unread);
 }
 
 // Nachricht senden
@@ -228,22 +248,55 @@ setInterval(load, 2000);
 
 // Service Worker & Push
 async function enablePush() {
+  // iOS (Safari) - Benachrichtigungen über Web App
+  if (/(iPad|iPhone|iPod)/g.test(navigator.userAgent)) {
+    alert("📱 iPhone aktiviert: Benachrichtigungen erfolgen über die Web App");
+    pushBtn.style.display = "none";
+    localStorage.setItem('pushEnabled', 'true');
+    return;
+  }
+
+  // Android/Chrome - Web Push
   if (!("Notification" in window)) { alert("Push wird nicht unterstützt"); return; }
   const permission = await Notification.requestPermission();
   if (permission !== "granted") { alert("Push wurde nicht erlaubt"); return; }
 
-  const reg = await navigator.serviceWorker.register("/service-worker.js");
-  alert("✅ Push aktiviert!");
-  pushBtn.style.display = "none";
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const subscription = await reg.pushManager.getSubscription();
+    
+    if (!subscription) {
+      const newSub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array('BBnld7E35g6yD0Aldz4Zpp2HxcSroSfY-HvGcxdo94oNEYEzUUn7ag-R9veP3Ih-sX3geLEqUSJj5qqGNsl8YFI')
+      });
+      await fetch('/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSub)
+      });
+    }
+    alert("✅ Push aktiviert!");
+    pushBtn.style.display = "none";
+    localStorage.setItem('pushEnabled', 'true');
+  } catch(err) {
+    console.error('Push-Fehler:', err);
+    alert("Push-Fehler: " + err.message);
+  }
 }
 
-async function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    try {
-      await navigator.serviceWorker.register('/service-worker.js');
-      console.log("Service Worker registriert");
-    } catch(err) { console.error(err); }
+// Helper für Base64-Konvertierung
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
   }
+  return outputArray;
 }
 </script>
 
