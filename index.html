@@ -133,23 +133,6 @@ body {
   box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
 
-/* Debug Info */
-#debugInfo {
-  position: fixed;
-  bottom: 80px;
-  right: 10px;
-  background: rgba(0,0,0,0.8);
-  color: #0f0;
-  padding: 8px 12px;
-  border-radius: 5px;
-  font-size: 12px;
-  font-family: monospace;
-  z-index: 999;
-  max-width: 250px;
-  max-height: 150px;
-  overflow: auto;
-  display: none;
-}
 </style>
 
 </head>
@@ -167,14 +150,9 @@ body {
 <!-- Push Button -->
 <button id="enablePush" onclick="enablePush()">🔔 Push aktivieren</button>
 
-<!-- Debug Button -->
-<button id="debugToggle" onclick="toggleDebug()" style="position: fixed; top: 10px; left: 10px; z-index: 1001; padding: 8px 12px; background: #666; color: white; border: none; border-radius: 5px;">🐛 Debug</button>
-
 <!-- Visueller Badge Counter -->
 <div id="badgeCounter">0</div>
 
-<!-- Debug Info -->
-<div id="debugInfo"></div>
 
 <!-- CHAT -->
 <div id="chat" style="display:none">
@@ -204,31 +182,6 @@ function debug(msg) {
 // Initialisiere visuellen Badge beim Start
 const savedCount = localStorage.getItem('unreadCount') || 0;
 updateVisualBadge(parseInt(savedCount));
-
-// Debug Toggle
-function toggleDebug() {
-  const debugDiv = document.getElementById('debugInfo');
-  if (debugDiv.style.display === 'none' || !debugDiv.style.display) {
-    debugDiv.style.display = 'block';
-    debugDiv.innerHTML = debugLogs.join('<br>');
-  } else {
-    debugDiv.style.display = 'none';
-  }
-}
-
-// Debug-Modus: 3x auf Badge klicken zum Anzeigen
-let badgeClickCount = 0;
-let badgeClickTimer;
-document.getElementById('badgeCounter').addEventListener('click', () => {
-  badgeClickCount++;
-  clearTimeout(badgeClickTimer);
-  badgeClickTimer = setTimeout(() => { badgeClickCount = 0; }, 1000);
-  
-  if (badgeClickCount === 3) {
-    badgeClickCount = 0;
-    toggleDebug();
-  }
-});
 
 // Login
 if (!USERNAME) { loginDiv.style.display = "block"; } 
