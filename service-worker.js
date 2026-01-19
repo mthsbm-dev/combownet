@@ -9,7 +9,7 @@ function saveUnreadCount(count) {
     const db = indexedDB.open('combow-messenger');
     db.onsuccess = () => {
       const store = db.result.transaction(['badge'], 'readwrite').objectStore('badge');
-      store.put({ id: 'unread', count: count });
+      store.put({ count: count }, 'unread');
     };
   } catch (e) {
     console.log('IndexedDB nicht verfügbar');
