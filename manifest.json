@@ -1,0 +1,21 @@
+{
+    "name": "Combow Messenger",
+    "short_name": "Combow",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ece5dd",
+    "theme_color": "#34b233",
+    "icons": [
+      {
+        "src": "/favicon.png",
+        "sizes": "192x192",
+        "type": "image/png"
+      },
+      {
+        "src": "/favicon.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  }
+  

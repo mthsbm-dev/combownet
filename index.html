@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Combow Messenger</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Favicon -->
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="icon" href="/favicon.png" type="image/x-icon">
+<link rel="apple-touch-icon" sizes="180x180" href="/favicon.png">
+<link rel="apple-touch-icon" sizes="152x152" href="/favicon.png">
+<link rel="apple-touch-icon" sizes="120x120" href="/favicon.png">
+
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#25D366">
+
+<style>
+:root {
+  --input-height: 70px;
+}
+
+/* Grundlayout */
+body {
+  font-family: Arial, sans-serif;
+  background: #ece5dd;
+  margin: 0;
+  padding: 0;
+}
+
+/* Login + Chat Wrapper */
+#login, #chat {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Login */
+#login {
+  margin-top: 100px;
+  padding: 10px;
+  text-align: center;
+}
+
+/* Nachrichtenbereich */
+#messages {
+  padding: 10px;
+  padding-bottom: calc(var(--input-height) + env(safe-area-inset-bottom));
+  height: calc(100vh - var(--input-height));
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* Nachricht */
+.message {
+  max-width: 70%;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  clear: both;
+}
+
+.me {
+  background: #dcf8c6;
+  float: right;
+  text-align: right;
+}
+
+.other {
+  background: white;
+  float: left;
+}
+
+.time {
+  font-size: 10px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* Eingabe-Leiste */
+#inputBar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: 100%;
+  max-width: 600px;
+  height: var(--input-height);
+  padding: 10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 10px;
+  background: #f0f0f0;
+  box-sizing: border-box;
+}
+
+#inputBar input {
+  flex: 1;
+  padding: 12px;
+  font-size: 16px;
+  border-radius: 20px;
+  border: 1px solid #ccc;
+  outline: none;
+}
+
+#inputBar button {
+  padding: 12px 18px;
+  font-size: 16px;
+  border-radius: 50%;
+  border: none;
+  background: #25D366;
+  color: white;
+  cursor: pointer;
+}
+</style>
+
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="login" style="display:none">
+  <h2>Combow Messenger</h2>
+  <p>Dein Name:</p>
+  <input id="usernameInput" placeholder="Name eingeben"><br>
+  <button onclick="login()">Start</button>
+</div>
+
+<!-- Push Button -->
+<button id="enablePush" onclick="enablePush()">🔔 Push aktivieren</button>
+
+<!-- CHAT -->
+<div id="chat" style="display:none">
+  <div id="messages"></div>
+  <div id="inputBar">
+    <input id="input" placeholder="Nachricht schreiben…" />
+    <button onclick="send()">➤</button>
+  </div>
+</div>
+
+<script>
+let USERNAME = localStorage.getItem("username");
+const loginDiv = document.getElementById("login");
+const chatDiv = document.getElementById("chat");
+const pushBtn = document.getElementById("enablePush");
+
+// Login
+if (!USERNAME) { loginDiv.style.display = "block"; } 
+else { chatDiv.style.display = "block"; load(); registerServiceWorker(); }
+
+// Login-Funktion
+function login() {
+  const name = document.getElementById("usernameInput").value.trim();
+  if (!name) return;
+  localStorage.setItem("username", name);
+  location.reload();
+}
+
+// Datum + Uhrzeit formatieren
+function formatDateTime(iso) {
+  const date = new Date(iso);
+  const today = new Date();
+
+  const sameDay =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+
+  const time = date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+  if (sameDay) {
+    return `Heute ${time}`;
+  }
+
+  const day = date.toLocaleDateString("de-DE");
+  return `${day} ${time}`;
+}
+
+
+// Nachrichten laden
+async function load() {
+  const res = await fetch("/messages");
+  const msgs = await res.json();
+  const box = document.getElementById("messages");
+  box.innerHTML = "";
+
+  msgs.forEach(m => {
+    const div = document.createElement("div");
+    div.className = "message " + (m.user === USERNAME ? "me" : "other");
+
+    div.innerHTML = `
+      <div><strong>${m.user}</strong></div>
+      <div>${m.text}</div>
+      <div class="time">${formatDateTime(m.time)}</div>
+    `;
+
+    box.appendChild(div);
+  });
+
+  box.scrollTop = box.scrollHeight;
+
+  // Badge auf PWA setzen (iOS/Android)
+  if ('setAppBadge' in navigator) {
+    const unread = msgs.filter(m => m.user !== USERNAME).length;
+    navigator.setAppBadge(unread).catch(()=>{});
+  }
+}
+
+// Nachricht senden
+async function send() {
+  const input = document.getElementById("input");
+  if (!input.value) return;
+  await fetch("/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: input.value, user: USERNAME })
+  });
+  input.value = "";
+  load();
+}
+
+// Alle 2 Sekunden laden
+setInterval(load, 2000);
+
+// Service Worker & Push
+async function enablePush() {
+  if (!("Notification" in window)) { alert("Push wird nicht unterstützt"); return; }
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") { alert("Push wurde nicht erlaubt"); return; }
+
+  const reg = await navigator.serviceWorker.register("/service-worker.js");
+  alert("✅ Push aktiviert!");
+  pushBtn.style.display = "none";
+}
+
+async function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.register('/service-worker.js');
+      console.log("Service Worker registriert");
+    } catch(err) { console.error(err); }
+  }
+}
+</script>
+
+</body>
+</html>
+
+
