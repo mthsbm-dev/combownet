@@ -201,6 +201,44 @@ function updateBadgeStorage(count) {
       navigator.clearAppBadge?.().catch(()=>{});
     }
   }
+  // Benachrichtige Service Worker über Badge-Änderung
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ 
+      type: 'setBadge', 
+      count: count 
+    });
+  }
+}
+
+// Badge löschen, wenn App aktiv ist
+function clearBadgeIfActive() {
+  if ('setAppBadge' in navigator) {
+    navigator.clearAppBadge?.().catch(()=>{});
+    localStorage.setItem('unreadCount', 0);
+  }
+  // Benachrichtige Service Worker
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ 
+      type: 'clearBadge'
+    });
+  }
+}
+
+// Überwache, ob App in den Fokus kommt
+window.addEventListener('focus', clearBadgeIfActive);
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) {
+    clearBadgeIfActive();
+  }
+});
+
+// Höre auf Nachrichten vom Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data.type === 'setUnreadCount') {
+      updateBadgeStorage(event.data.count);
+    }
+  });
 }
 
 // Nachrichten laden
@@ -225,9 +263,14 @@ async function load() {
 
   box.scrollTop = box.scrollHeight;
 
-  // Badge auf PWA setzen (iOS/Android)
-  const unread = msgs.filter(m => m.user !== USERNAME).length;
-  updateBadgeStorage(unread);
+  // Badge auf PWA setzen (iOS/Android) - nur wenn App nicht sichtbar ist
+  if (document.hidden) {
+    const unread = msgs.filter(m => m.user !== USERNAME).length;
+    updateBadgeStorage(unread);
+  } else {
+    // App ist sichtbar - Badge löschen
+    clearBadgeIfActive();
+  }
 }
 
 // Nachricht senden
@@ -242,6 +285,19 @@ async function send() {
   input.value = "";
   load();
 }
+
+// Enter-Taste zum Senden
+document.addEventListener("DOMContentLoaded", function() {
+  const input = document.getElementById("input");
+  if (input) {
+    input.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        send();
+      }
+    });
+  }
+});
 
 // Alle 2 Sekunden laden
 setInterval(load, 2000);

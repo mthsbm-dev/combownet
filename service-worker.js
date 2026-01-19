@@ -11,6 +11,14 @@ function saveUnreadCount(count) {
       const store = db.result.transaction(['badge'], 'readwrite').objectStore('badge');
       store.put({ id: 'unread', count: count });
     };
+    db.onerror = () => {
+      // Fallback auf localStorage wenn IndexedDB fehlschlägt
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({ type: 'setUnreadCount', count: count });
+        });
+      });
+    };
   } catch (e) {
     console.log('IndexedDB nicht verfügbar');
   }
@@ -106,3 +114,23 @@ self.addEventListener("notificationclick", event => {
 
 // SW aktivieren
 self.addEventListener("activate", event => { event.waitUntil(self.clients.claim()); });
+
+// Nachrichten von der App empfangen
+self.addEventListener('message', event => {
+  if (event.data.type === 'setBadge') {
+    unreadCount = event.data.count;
+    saveUnreadCount(unreadCount);
+    if ('setAppBadge' in self) {
+      if (unreadCount > 0) {
+        self.setAppBadge(unreadCount).catch(()=>{});
+      } else {
+        self.clearAppBadge?.().catch(()=>{});
+      }
+    }
+  } else if (event.data.type === 'clearBadge') {
+    unreadCount = 0;
+    saveUnreadCount(0);
+    if ('clearAppBadge' in self) { self.clearAppBadge().catch(()=>{}); }
+    if ('setAppBadge' in self) { self.setAppBadge(0).catch(()=>{}); }
+  }
+});
