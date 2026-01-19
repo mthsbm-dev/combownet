@@ -41,6 +41,20 @@ app.get("/messages", (req, res) => {
   }
 });
 
+// Badge-Count für einen User (ungelesene Nachrichten)
+app.get("/badge/:user", (req, res) => {
+  try {
+    const data = fs.readFileSync(DATA_FILE, "utf8");
+    const messages = JSON.parse(data);
+    // Zähle alle Nachrichten die NICHT vom User sind
+    const unreadCount = messages.filter(m => m.user !== req.params.user).length;
+    res.json({ unreadCount });
+  } catch (err) {
+    console.error(err);
+    res.json({ unreadCount: 0 });
+  }
+});
+
 // Nachricht speichern + Push
 app.post("/messages", (req, res) => {
   const { text, user } = req.body;

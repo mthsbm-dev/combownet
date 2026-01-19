@@ -163,7 +163,44 @@ async function registerServiceWorker() {
     try {
       await navigator.serviceWorker.register('/service-worker.js');
       console.log("Service Worker registriert");
+      // Badge aus IndexedDB laden und anzeigen
+      restoreBadgeFromStorage();
     } catch(err) { console.error(err); }
+  }
+}
+
+// Badge aus IndexedDB/localStorage wiederherstellen
+async function restoreBadgeFromStorage() {
+  try {
+    const db = indexedDB.open('combow-messenger');
+    db.onsuccess = () => {
+      const store = db.result.transaction(['badge'], 'readonly').objectStore('badge');
+      const req = store.get('unread');
+      req.onsuccess = () => {
+        const count = req.result ? req.result.count : 0;
+        updateBadgeStorage(count);
+        console.log('Badge wiederhergestellt:', count);
+      };
+    };
+  } catch (e) {
+    console.log('IndexedDB nicht verfügbar, verwende localStorage');
+    const count = parseInt(localStorage.getItem('unreadCount') || '0');
+    updateBadgeStorage(count);
+  }
+}
+
+// Badge vom Server synchronisieren (für iOS)
+async function syncBadgeFromServer() {
+  if (!USERNAME) return;
+  try {
+    const res = await fetch(`/badge/${encodeURIComponent(USERNAME)}`);
+    const data = await res.json();
+    if (data.unreadCount !== undefined) {
+      updateBadgeStorage(data.unreadCount);
+      console.log('Badge vom Server synchronisiert:', data.unreadCount);
+    }
+  } catch (err) {
+    console.error('Badge-Sync Fehler:', err);
   }
 }
 
@@ -193,13 +230,29 @@ function formatDateTime(iso) {
 // Badge in localStorage speichern
 function updateBadgeStorage(count) {
   localStorage.setItem('unreadCount', count);
-  // Für iOS: PWA Badge aktualisieren
+  
+  // Für iOS/Android: PWA Badge aktualisieren
   if ('setAppBadge' in navigator) {
     if (count > 0) {
-      navigator.setAppBadge(count).catch(()=>{});
+      navigator.setAppBadge(count).catch(err => {
+        console.warn('Badge konnte nicht gesetzt werden:', err);
+      });
     } else {
-      navigator.clearAppBadge?.().catch(()=>{});
+      navigator.clearAppBadge?.().catch(err => {
+        console.warn('Badge konnte nicht gelöscht werden:', err);
+      });
     }
+  }
+  
+  // Auch in IndexedDB speichern für Synchronisation
+  try {
+    const db = indexedDB.open('combow-messenger');
+    db.onsuccess = () => {
+      const store = db.result.transaction(['badge'], 'readwrite').objectStore('badge');
+      store.put({ id: 'unread', count: count });
+    };
+  } catch (e) {
+    console.log('IndexedDB Schreibfehler');
   }
 }
 
@@ -243,8 +296,40 @@ async function send() {
   load();
 }
 
+// Enter-Taste zum Senden
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById("input");
+  if (input) {
+    input.addEventListener('keypress', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        send();
+      }
+    });
+  }
+});
+
 // Alle 2 Sekunden laden
 setInterval(load, 2000);
+
+// Badge alle 5 Sekunden vom Server synchronisieren (für iOS)
+setInterval(syncBadgeFromServer, 5000);
+
+// Badge-Synchronisierung bei App-Fokus (iOS)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    console.log('App zurück im Fokus, Badge wird aktualisiert...');
+    syncBadgeFromServer();
+    load();
+  }
+});
+
+// Badge auch beim Page Show aktualisieren
+window.addEventListener('pageshow', () => {
+  console.log('Page show, Badge wird synchronisiert...');
+  syncBadgeFromServer();
+  load();
+});
 
 // Service Worker & Push
 async function enablePush() {
