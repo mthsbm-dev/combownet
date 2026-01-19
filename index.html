@@ -167,10 +167,13 @@ body {
 <!-- Push Button -->
 <button id="enablePush" onclick="enablePush()">🔔 Push aktivieren</button>
 
+<!-- Debug Button -->
+<button id="debugToggle" onclick="toggleDebug()" style="position: fixed; top: 10px; left: 10px; z-index: 1001; padding: 8px 12px; background: #666; color: white; border: none; border-radius: 5px;">🐛 Debug</button>
+
 <!-- Visueller Badge Counter -->
 <div id="badgeCounter">0</div>
 
-<!-- Debug Info (3x kurz klicken zum Anzeigen) -->
+<!-- Debug Info -->
 <div id="debugInfo"></div>
 
 <!-- CHAT -->
@@ -188,9 +191,30 @@ const loginDiv = document.getElementById("login");
 const chatDiv = document.getElementById("chat");
 const pushBtn = document.getElementById("enablePush");
 
+// Debug-Variablen (müssen VOR updateVisualBadge definiert sein!)
+let debugLogs = [];
+function debug(msg) {
+  const timestamp = new Date().toLocaleTimeString();
+  const logMsg = `[${timestamp}] ${msg}`;
+  debugLogs.push(logMsg);
+  if (debugLogs.length > 10) debugLogs.shift();
+  console.log(logMsg);
+}
+
 // Initialisiere visuellen Badge beim Start
 const savedCount = localStorage.getItem('unreadCount') || 0;
 updateVisualBadge(parseInt(savedCount));
+
+// Debug Toggle
+function toggleDebug() {
+  const debugDiv = document.getElementById('debugInfo');
+  if (debugDiv.style.display === 'none' || !debugDiv.style.display) {
+    debugDiv.style.display = 'block';
+    debugDiv.innerHTML = debugLogs.join('<br>');
+  } else {
+    debugDiv.style.display = 'none';
+  }
+}
 
 // Debug-Modus: 3x auf Badge klicken zum Anzeigen
 let badgeClickCount = 0;
@@ -202,13 +226,7 @@ document.getElementById('badgeCounter').addEventListener('click', () => {
   
   if (badgeClickCount === 3) {
     badgeClickCount = 0;
-    const debugDiv = document.getElementById('debugInfo');
-    if (debugDiv.style.display === 'none' || !debugDiv.style.display) {
-      debugDiv.style.display = 'block';
-      debugDiv.innerHTML = debugLogs.join('<br>');
-    } else {
-      debugDiv.style.display = 'none';
-    }
+    toggleDebug();
   }
 });
 
@@ -293,16 +311,6 @@ function updateVisualBadge(count) {
   debug(`Badge: ${count}`);
 }
 
-// Debug-Funktion
-let debugLogs = [];
-function debug(msg) {
-  const timestamp = new Date().toLocaleTimeString();
-  const logMsg = `[${timestamp}] ${msg}`;
-  debugLogs.push(logMsg);
-  if (debugLogs.length > 10) debugLogs.shift();
-  console.log(logMsg);
-}
-
 // Badge löschen, wenn App aktiv ist
 function clearBadgeIfActive() {
   if ('setAppBadge' in navigator) {
@@ -320,9 +328,14 @@ function clearBadgeIfActive() {
 }
 
 // Überwache, ob App in den Fokus kommt
-window.addEventListener('focus', clearBadgeIfActive);
+window.addEventListener('focus', () => {
+  debug('Focus: clearing badge');
+  clearBadgeIfActive();
+});
+
 document.addEventListener('visibilitychange', function() {
   if (!document.hidden) {
+    debug('Visibility: clearing badge (visible)');
     clearBadgeIfActive();
   }
 });
@@ -359,16 +372,8 @@ async function load() {
 
   box.scrollTop = box.scrollHeight;
 
-  // Badge auf PWA setzen (iOS/Android) - nur wenn App nicht sichtbar ist
-  if (document.hidden) {
-    const unread = msgs.filter(m => m.user !== USERNAME).length;
-    debug(`Load (hidden): ${unread} unread`);
-    updateBadgeStorage(unread);
-  } else {
-    // App ist sichtbar - Badge löschen
-    debug(`Load (visible): clearing badge`);
-    clearBadgeIfActive();
-  }
+  // Nur Badge zählen, wenn App wirklich geöffnet ist (nicht basierend auf document.hidden!)
+  // Der Badge wird vom Service Worker bei Push gesetzt und hier nur bei echtem Focus gelöscht
 }
 
 // Nachricht senden
@@ -397,8 +402,8 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 });
 
-// Alle 2 Sekunden laden
-setInterval(load, 2000);
+// Alle 5 Sekunden laden (reduced von 2000ms für weniger Traffic)
+setInterval(load, 5000);
 
 // Service Worker & Push
 async function enablePush() {
