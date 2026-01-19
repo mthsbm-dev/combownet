@@ -191,14 +191,13 @@ async function restoreBadgeFromStorage() {
 
 // Badge vom Server synchronisieren (für iOS)
 async function syncBadgeFromServer() {
-  if (!USERNAME) return;
   try {
-    const res = await fetch(`/badge/${encodeURIComponent(USERNAME)}`);
-    const data = await res.json();
-    if (data.unreadCount !== undefined) {
-      updateBadgeStorage(data.unreadCount);
-      console.log('Badge vom Server synchronisiert:', data.unreadCount);
-    }
+    const res = await fetch(`/messages`);
+    const messages = await res.json();
+    // Zähle alle Nachrichten die NICHT vom aktuellen User sind
+    const unreadCount = messages.filter(m => m.user !== USERNAME).length;
+    updateBadgeStorage(unreadCount);
+    console.log('Badge vom Server synchronisiert:', unreadCount);
   } catch (err) {
     console.error('Badge-Sync Fehler:', err);
   }
